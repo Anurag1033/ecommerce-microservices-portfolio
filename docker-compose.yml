@@ -62,6 +62,60 @@ services:
       timeout: 5s
       retries: 5
 
+
+
+  order_service:
+    build:
+      context: ./order_service
+    container_name: ecommerce_order_service
+    restart: on-failure
+    ports:
+      - "5001:5001"
+    environment:
+      - DB_HOST=ecommerce_postgres
+      - KAFKA_BROKER=ecommerce_kafka:9092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    networks:
+      - ecommerce_net
+
+  inventory_consumer:
+    build:
+      context: ./inventory_service
+    container_name: ecommerce_inventory_consumer
+    restart: on-failure
+    environment:
+      - DB_HOST=ecommerce_postgres
+      - KAFKA_BROKER=ecommerce_kafka:9092
+      - REDIS_URL=redis://ecommerce_redis:6379/0
+    # Override the default command to run the Kafka consumer instead of the API
+    command: ["python", "run_consumer.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ecommerce_net
+
+  api_gateway:
+    image: nginx:alpine
+    container_name: ecommerce_api_gateway
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - order_service
+    networks:
+      - ecommerce_net
+
 networks:
   ecommerce_net:
     driver: bridge
